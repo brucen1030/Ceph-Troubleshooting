@@ -14,10 +14,38 @@
 
 BlueStore由于非对齐覆盖写需要调用一次或两次_do_read()同步读，对应head不对齐或tial不对齐，或head和tial都不对齐。如果在_do_read()中需要读取原数据，时间更长。从HDD磁盘上随机读取数据，延迟一般是ms级别，相对于simple write性能有比较大的退化，而且HDD默认只有5个线程写数据，很可能全都卡在等待同步读完成上，没有并发起来。
 
-|// 一个类似的 *错误* 示例<br># parted /dev/vdb<br>GNU Parted 3.2<br>Using /dev/vdb<br>Welcome to GNU Parted! Type 'help' to view a list of commands.<br>(parted) mklabel gpt                                                      <br>Warning: The existing disk label on /dev/vdb will be destroyed and all data on this disk will be lost. Do you want to continue?<br>Yes/No? y                                                                                                                         <br>(parted) mkpart primary xfs 0 100%   // 应该是0% ！！！                                     <br>Warning: The resulting partition is not properly aligned for best performance: 34s % 2048s != 0s<br>Ignore/Cancel? Ignore                                                     <br>(parted) quit                                                             <br><br>// 用fdisk看一下，注意"Start"列的值，是34，不能被8整除也就是非4k对齐，并且最后一行有提示没有对齐。<br>// Start 34 sector应该是GPT的最小长度了。<br># fdisk -lu /dev/vdb<br>Disk /dev/vdb: 100 GiB, xxxx bytes, xxxx sectors<br>Units: sectors of 1 * 512 = 512 bytes<br>Sector size (logical/physical): 512 bytes / 4096 bytes<br>I/O size (minimum/optimal): 262144 bytes / 262144 bytes<br>Disklabel type: gpt<br>Disk identifier: XXXXXXXXXX<br><br><br>Device     Start        End    Sectors   Size Type<br>/dev/vdb1     34 XXXXXXXX YYYYYYYY 100G Linux filesystem<br><br><br>Partition 1 does not start on physical sector boundary.|
-|:----|
+```shell
+// 一个类似的 *错误* 示例
+# parted /dev/vdb
+GNU Parted 3.2
+Using /dev/vdb
+Welcome to GNU Parted! Type 'help' to view a list of commands.
+(parted) mklabel gpt                                                      
+Warning: The existing disk label on /dev/vdb will be destroyed and all data on this disk will be lost. Do you want to continue?
+Yes/No? y                                                                                                                         
+(parted) mkpart primary xfs 0 100%   // 应该是0% ！！！                                     
+Warning: The resulting partition is not properly aligned for best performance: 34s % 2048s != 0s
+Ignore/Cancel? Ignore                                                     
+(parted) quit                                                             
+ 
+// 用fdisk看一下，注意"Start"列的值，是34，不能被8整除也就是非4k对齐，并且最后一行有提示没有对齐。
+// Start 34 sector应该是GPT的最小长度了。
+# fdisk -lu /dev/vdb
+Disk /dev/vdb: 100 GiB, xxxx bytes, xxxx sectors
+Units: sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 4096 bytes
+I/O size (minimum/optimal): 262144 bytes / 262144 bytes
+Disklabel type: gpt
+Disk identifier: XXXXXXXXXX
+ 
+ 
+Device     Start        End    Sectors   Size Type
+/dev/vdb1     34 XXXXXXXX YYYYYYYY 100G Linux filesystem
+ 
+ 
+Partition 1 does not start on physical sector boundary.
+```
 如果正确使用parted命令，fdisk显示应该是下面这样，Start列是2048（sector）。
-
 ```typescript
 # fdisk -lu /dev/vdc
 Disk /dev/vdc: 100 GiB, XXXXXXXX bytes, YYYYYY sectors
@@ -100,7 +128,7 @@ ceph daemon osd.0 perf dump
 
 # 背景知识
 
-下面这个链接详细讲了BlueStore状态机的各个状态。“对于用户或osd层面的一次IO写请求，到BlueStore这一层，可能是simple write，也可能是deferred write，还有可能既有simple write的场景，也有deferred write的场景。”具体流程可以参考[http://blog.wjin.org/posts/ceph-bluestore.html](http://blog.wjin.org/posts/ceph-bluestore.html)。
+下面这个链接详细讲了BlueStore状态机的各个状态和IO流程。“对于用户或osd层面的一次IO写请求，到BlueStore这一层，可能是simple write，也可能是deferred write，还有可能既有simple write的场景，也有deferred write的场景。”具体流程可以参考[http://blog.wjin.org/posts/ceph-bluestore.html](http://blog.wjin.org/posts/ceph-bluestore.html)。
 
 
 
